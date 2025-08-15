@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>IA Query Interface</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body {
+	font-family: Arial, sans-serif;
+	padding: 20px;
+}
+
+textarea {
+	width: 100%;
+	height: 60px;
+}
+
+table {
+	border-collapse: collapse;
+	width: 100%;
+	margin-top: 20px;
+}
+
+th, td {
+	border: 1px solid #ddd;
+	padding: 8px;
+	text-align: left;
+}
+
+canvas {
+	margin-top: 30px;
+}
+</style>
+</head>
+<body>
+	<h2>Asistente de Consulta IA</h2>
+
+	<label for="prompt">Ingresa tu pregunta:</label>
+	<br>
+	<textarea id="prompt"></textarea>
+	<br>
+	<br>
+	<button onclick="enviarConsulta()">Enviar</button>
+	<button onclick="leerBase()">Refrezcar</button>
+
+	<div id="sql"></div>
+	<div id="tabla"></div>
+	<canvas id="grafico"></canvas>
+
+	<script>
+    async function enviarConsulta() {
+      const prompt = document.getElementById("prompt").value;
+      const tablaDiv = document.getElementById("tabla");
+      const graficoCanvas = document.getElementById("grafico");
+      tablaDiv.innerHTML = "Cargando...";
+
+      try {
+        const response = await fetch("http://localhost:8080/query", {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: prompt
+        });
+
+        const datos = await response.json();
+        //if (!Array.isArray(datos)) throw new Error("Respuesta inesperada del servidor");
+		document.getElementById("sql").innerHTML = datos.sql;
+        mostrarTabla(datos.data);
+        mostrarGrafico(datos.data);
+      } catch (error) {
+        tablaDiv.innerHTML = `<p style="color:red">Error: ${error.message}</p>`;
+      }
+    }
+    
+    async function leerBase() {
+        const prompt = document.getElementById("prompt").value;
+        const tablaDiv = document.getElementById("tabla");
+        const graficoCanvas = document.getElementById("grafico");
+        tablaDiv.innerHTML = "Cargando...";
+
+        try {
+          const response = await fetch("http://localhost:8080/refreshSchema", {
+            method: "GET",
+            headers: { "Content-Type": "text/plain" },
+          });
+        } catch (error) {
+          tablaDiv.innerHTML = `<p style="color:red">Error: ${error.message}</p>`;
+        }
+      }
+
+    function mostrarTabla(datos) {
+      if (datos.length === 0) return;
+
+      const columnas = Object.keys(datos[0]);
+      let html = "<table><thead><tr>";
+      columnas.forEach(col => html += `<th>${col}</th>`);
+      html += "</tr></thead><tbody>";
+
+      datos.forEach(row => {
+        html += "<tr>";
+        columnas.forEach(col => html += `<td>${row[col]}</td>`);
+        html += "</tr>";
+      });
+
+      html += "</tbody></table>";
+      document.getElementById("tabla").innerHTML = html;
+    }
+
+    function mostrarGrafico(datos) {
+      if (datos.length === 0) return;
+
+      const columnas = Object.keys(datos[0]);
+      const [labelCol, valueCol] = columnas;
+
+      const etiquetas = datos.map(row => row[labelCol]);
+      const valores = datos.map(row => Number(row[valueCol]) || 0);
+
+      new Chart(document.getElementById("grafico"), {
+        type: "bar",
+        data: {
+          labels: etiquetas,
+          datasets: [{
+            label: valueCol,
+            data: valores,
+            backgroundColor: "#4682b4"
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+    }
+  </script>
+</body>
+</html>
