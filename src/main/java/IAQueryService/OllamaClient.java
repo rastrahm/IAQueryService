@@ -24,33 +24,42 @@ public class OllamaClient {
         this.apiUrl = apiUrl;
     }
 
-    public String generateSQL(String schemaJson, String promptText) throws IOException, ParseException {
-        //String full = "Usa este esquema JSON para SQL sin explicaciones:\n" + schemaJson + "\nPregunta: " + promptText + "\nSQL:";
-    	//String full = "Usa exclusivamente este esque JSON para genera UNA sentenccia SQL válida y completa, sin cometanrios ni explicaciones. Solo quiero el SQL:\n" + schemaJson + "\nPregunta: " + promptText + "\nSQL:";
-    	//String full = "Quiero obtener una consulta SQL, la cual vas a responder con SQL: utilizando esta estructura: " + schemaJson + " para responder: " + promptText + "\nSQL:";
-    	/*String full = 
-    			  "Genera solo una consulta SQL válida sin explicaciones. Usa exclusivamente las tablas y columnas que figuran en este esquema JSON: " 
-    			  + schemaJson 
-    			  + " No inventes tablas ni campos. La consulta debe responder a esta pregunta: " 
-    			  + promptText 
-    			  + ", Devuelve solo el SQL:";*/
-    	String full = """
-    			Eres un experto en base de datos que escribe sencillo, para una base de datos PostgreSQL. A continuación, tienes el esquema:
+    String buildPrompt(String promptText) throws IOException {
+        String upper = promptText.toUpperCase();
+        String schemaJsonDNARH = new String(Files.readAllBytes(Paths.get("esquema.json")), StandardCharsets.UTF_8);
+        esquemaSecciones.append("\t\t\t    DNARH:\n").append(schemaJsonDNARH).append("\n");
+        String full = """
+				Eres un generador de SQL para una base de datos Oracle. Utilizando Oracle SQL.
+				
+				INSTRUCCIONES ESTRICTAS:
+			    1. Usa EXCLUSIVAMENTE los nombres de tablas y columnas que aparecen en el esquema JSON.
+			    2. Usa los nombres EXACTOS, respetando mayúsculas y minúsculas tal como están en el JSON.
+			    3. En TODOS los identificadores, usa el schema real del JSON como prefijo exacto: schema.tabla.columna (por ejemplo: SIGTH_ASIS.MI_TABLA.MI_COLUMNA).
+			    4. Para hacer JOIN, usa ÚNICAMENTE las relaciones que aparecen en `foreign_keys` y `exported_keys`.
+			    5. No inventes tablas ni columnas que no estén en el esquema.
+			    6. Devuelve SOLO el SQL, sin comentarios, sin explicaciones y sin texto adicional.
+			    7. No agregues comentarios ni explicaciones.
+			    8. No incluyas punto y coma al final.
+			    9. Si no es posible construir la consulta con la información disponible, devuelve exactamente: -- Consulta no posible
+			    10. Ignora los encabezados de sección (ASIS, ACAD, etc.); usa siempre el valor del campo "schema" del JSON como nombre de esquema en el SQL.
+			    
+			    ESQUEMA DE LA BASE DE DATOS (solo los relevantes según la consulta):
+				""" + esquemaSecciones.toString() + "\n\nPREGUNTA:\n" + promptText + "\n\nSQL:\n";
+        return full;
+    }
 
-    			%s
-
-    			Devuelve sólo la consulta SQL sin explicaciones, incluyendo el esquema y la tabla, sin envolverla en texto adicional. Pregunta:
-    			%s
-
-    			
-    			""".formatted(schemaJson, promptText);
-    	System.out.println(full);
+    public String generateSQL(String promptText) throws IOException, ParseException {
+        String full = buildPrompt(promptText);
+        System.out.println(full);
         ObjectMapper m = new ObjectMapper();
         ObjectNode o = m.createObjectNode();
 		o.put("model", "codellama:latest");
         o.put("prompt", full);
         o.put("stream", false);
-        o.putArray("stop").add(";");
+        ObjectNode options = o.putObject("options");
+        options.put("temperature", 0.1);
+        options.put("num_ctx", 12288);
+        o.putArray("stop").add(";").add("```\n").add("\n\n");
         String body = m.writeValueAsString(o);
 
         HttpPost p = new HttpPost(apiUrl + "/api/generate");
@@ -70,13 +79,6 @@ public class OllamaClient {
             JsonNode root = m.readTree(rb);
             String sql = root.path("response").asText();
             return sql.replaceAll("\\\\n", " ").replaceAll("\\s+", " ").trim();
-            /*int s = rb.indexOf("\"response\":\"");
-            if (s>=0) {
-                int f = s + 12;
-                int t = rb.indexOf('"', f);
-                return rb.substring(f, t).replaceAll("\\n", " ").trim();
-            }
-            throw new IOException("Invalid response from Ollama: "+rb);*/
         }
     }
 }

@@ -28,17 +28,30 @@ public class JsonUtil {
 	
 	public String extractSQLFromBackticks(String response) throws IOException {
 	    //Tenemos que comentar al pasar de codellama a sqlcode
-	    int start = response.indexOf("```");
-	    if (start == -1) {
-	        throw new IOException("No se encontró el delimitador de inicio ``` en la respuesta.");
-	    }
-
-	    int end = response.indexOf("```", start + 3);
-	    if (end == -1) {
-	        throw new IOException("No se encontró el delimitador de cierre ``` en la respuesta.");
-	    }
-
-	    String sql = response.substring(start + 3, end).trim().replace("\\n", " ").replace("\n", " ").replace("sql", " ");
+		String buscar = "```";
+		String sql = "";
+		int existe = response.split(buscar, -1).length - 1;
+		if (existe > 1) {
+			int start = response.indexOf("```");
+			/*
+			 * if (start == -1) { throw new
+			 * IOException("No se encontró el delimitador de inicio ``` en la respuesta.");
+			 * }
+			 */
+			
+			int end = response.indexOf("```", start + 3);
+			/*
+			 * if (end == -1) { throw new
+			 * IOException("No se encontró el delimitador de cierre ``` en la respuesta.");
+			 * }
+			 */
+			sql = response.substring(start + 3, end).trim().replace("\\n", " ").replace("\n", " ").replace("sql", " ");	    	
+		} else if (existe == 1) {
+            int end = response.indexOf("```");
+            sql = response.substring(0, end).trim().replace("\\n", " ").replace("\n", " ").replace("sql", " ");	    	
+		} else {
+			sql = response.trim().replace("\\n", " ").replace("\n", " ").replace("sql", " ");
+		}
 		//String sql = response.trim().replace("\\n", " ").replace("\n", " ").replace("sql", " ");
 	    return sql;
 	}
