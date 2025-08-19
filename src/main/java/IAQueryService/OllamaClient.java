@@ -2,6 +2,8 @@ package IAQueryService;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.hc.client5.http.classic.methods.HttpPost;
@@ -26,8 +28,34 @@ public class OllamaClient {
 
     String buildPrompt(String promptText) throws IOException {
         String upper = promptText.toUpperCase();
-        String schemaJsonDNARH = new String(Files.readAllBytes(Paths.get("esquema.json")), StandardCharsets.UTF_8);
-        esquemaSecciones.append("\t\t\t    DNARH:\n").append(schemaJsonDNARH).append("\n");
+        
+        // Determinar qué sección usar basándose en palabras clave
+        String sectionToUse = "DNARH"; // Por defecto
+        if (upper.contains("ASIS") || upper.contains("ASISTENCIA")) {
+            sectionToUse = "ASIS";
+        } else if (upper.contains("ACAD") || upper.contains("ACADÉMICO") || upper.contains("ACADEMICO")) {
+            sectionToUse = "ACAD";
+        }
+        
+        // Intentar leer esquema estructurado por secciones
+        String schemaJson;
+        try {
+            String structuredSchema = new String(Files.readAllBytes(Paths.get("esquema_test.json")), StandardCharsets.UTF_8);
+            // Parsear el JSON estructurado y extraer solo la sección necesaria
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(structuredSchema);
+            JsonNode section = root.path(sectionToUse);
+            if (!section.isMissingNode()) {
+                schemaJson = sectionToUse + ":\n" + mapper.writeValueAsString(section);
+            } else {
+                // Fallback al esquema completo si no se encuentra la sección
+                schemaJson = new String(Files.readAllBytes(Paths.get("esquema.json")), StandardCharsets.UTF_8);
+            }
+        } catch (IOException e) {
+            // Fallback al esquema original si no existe el estructurado
+            schemaJson = new String(Files.readAllBytes(Paths.get("esquema.json")), StandardCharsets.UTF_8);
+        }
+        
         String full = """
 				Eres un generador de SQL para una base de datos Oracle. Utilizando Oracle SQL.
 				
@@ -44,7 +72,7 @@ public class OllamaClient {
 			    10. Ignora los encabezados de sección (ASIS, ACAD, etc.); usa siempre el valor del campo "schema" del JSON como nombre de esquema en el SQL.
 			    
 			    ESQUEMA DE LA BASE DE DATOS (solo los relevantes según la consulta):
-				""" + esquemaSecciones.toString() + "\n\nPREGUNTA:\n" + promptText + "\n\nSQL:\n";
+				""" + schemaJson + "\n\nPREGUNTA:\n" + promptText + "\n\nSQL:\n";
         return full;
     }
 
@@ -67,18 +95,18 @@ public class OllamaClient {
         p.setEntity(new StringEntity(body, StandardCharsets.UTF_8));
         
         RequestConfig config = RequestConfig.custom()
-        	    .setConnectTimeout(6000, TimeUnit.SECONDS)  // conexión
+        	    .setConnectionRequestTimeout(6000, TimeUnit.SECONDS)  // conexión
         	    .setResponseTimeout(7200, TimeUnit.SECONDS) // lectura
         	    .build();
         
-        try (
-        	CloseableHttpClient c = HttpClients.custom().setDefaultRequestConfig(config).build();
-            ClassicHttpResponse r = (ClassicHttpResponse) c.execute(p)) {
-            String rb = EntityUtils.toString(r.getEntity());
-            System.out.println("Respuesta cruda de Ollama:\n" + rb);
-            JsonNode root = m.readTree(rb);
-            String sql = root.path("response").asText();
-            return sql.replaceAll("\\\\n", " ").replaceAll("\\s+", " ").trim();
+        try (CloseableHttpClient c = HttpClients.custom().setDefaultRequestConfig(config).build()) {
+            try (ClassicHttpResponse r = (ClassicHttpResponse) c.execute(p)) {
+                String rb = EntityUtils.toString(r.getEntity());
+                System.out.println("Respuesta cruda de Ollama:\n" + rb);
+                JsonNode root = m.readTree(rb);
+                String sql = root.path("response").asText();
+                return sql.replaceAll("\\\\n", " ").replaceAll("\\s+", " ").trim();
+            }
         }
     }
 }

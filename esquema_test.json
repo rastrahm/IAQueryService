@@ -1,0 +1,12 @@
+{
+  "ASIS": [
+    {"schema":"SIGTH_ASIS","table":"asistencia","columns":[{"name":"id","type":"NUMBER"},{"name":"empleado_id","type":"NUMBER"},{"name":"fecha","type":"DATE"},{"name":"hora_entrada","type":"TIMESTAMP"},{"name":"hora_salida","type":"TIMESTAMP"}],"foreign_keys":[],"exported_keys":[]}
+  ],
+  "ACAD": [
+    {"schema":"SIGTH_ACAD","table":"estudiantes","columns":[{"name":"id","type":"NUMBER"},{"name":"nombre","type":"VARCHAR2"},{"name":"apellido","type":"VARCHAR2"}],"foreign_keys":[],"exported_keys":[]}
+  ],
+  "DNARH": [
+    {"schema":"DNARH","table":"empleados","columns":[{"name":"id","type":"NUMBER"},{"name":"nombre","type":"VARCHAR2"},{"name":"area_id","type":"NUMBER"}],"foreign_keys":[],"exported_keys":[]},
+    {"schema":"DNARH","table":"areas","columns":[{"name":"id","type":"NUMBER"},{"name":"nombre","type":"VARCHAR2"}],"foreign_keys":[],"exported_keys":[]}
+  ]
+}

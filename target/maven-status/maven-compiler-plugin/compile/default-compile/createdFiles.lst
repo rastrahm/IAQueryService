@@ -1,0 +1,8 @@
+IAQueryService/QueryHandler.class
+IAQueryService/OllamaClient.class
+IAQueryService/DBMetadataReader.class
+IAQueryService/QueryExec.class
+IAQueryService/IAQueryService.class
+IAQueryService/StaticFileHandler.class
+IAQueryService/JsonUtil.class
+IAQueryService/SchemaHandler.class
