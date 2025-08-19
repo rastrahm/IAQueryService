@@ -2,6 +2,8 @@ package IAQueryService;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.hc.client5.http.classic.methods.HttpPost;
@@ -24,33 +26,68 @@ public class OllamaClient {
         this.apiUrl = apiUrl;
     }
 
-    public String generateSQL(String schemaJson, String promptText) throws IOException, ParseException {
-        //String full = "Usa este esquema JSON para SQL sin explicaciones:\n" + schemaJson + "\nPregunta: " + promptText + "\nSQL:";
-    	//String full = "Usa exclusivamente este esque JSON para genera UNA sentenccia SQL válida y completa, sin cometanrios ni explicaciones. Solo quiero el SQL:\n" + schemaJson + "\nPregunta: " + promptText + "\nSQL:";
-    	//String full = "Quiero obtener una consulta SQL, la cual vas a responder con SQL: utilizando esta estructura: " + schemaJson + " para responder: " + promptText + "\nSQL:";
-    	/*String full = 
-    			  "Genera solo una consulta SQL válida sin explicaciones. Usa exclusivamente las tablas y columnas que figuran en este esquema JSON: " 
-    			  + schemaJson 
-    			  + " No inventes tablas ni campos. La consulta debe responder a esta pregunta: " 
-    			  + promptText 
-    			  + ", Devuelve solo el SQL:";*/
-    	String full = """
-    			Eres un experto en base de datos que escribe sencillo, para una base de datos PostgreSQL. A continuación, tienes el esquema:
+    String buildPrompt(String promptText) throws IOException {
+        String upper = promptText.toUpperCase();
+        
+        // Determinar qué sección usar basándose en palabras clave
+        String sectionToUse = "DNARH"; // Por defecto
+        if (upper.contains("ASIS") || upper.contains("ASISTENCIA")) {
+            sectionToUse = "ASIS";
+        } else if (upper.contains("ACAD") || upper.contains("ACADÉMICO") || upper.contains("ACADEMICO")) {
+            sectionToUse = "ACAD";
+        }
+        
+        // Intentar leer esquema estructurado por secciones
+        String schemaJson;
+        try {
+            String structuredSchema = new String(Files.readAllBytes(Paths.get("esquema_test.json")), StandardCharsets.UTF_8);
+            // Parsear el JSON estructurado y extraer solo la sección necesaria
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(structuredSchema);
+            JsonNode section = root.path(sectionToUse);
+            if (!section.isMissingNode()) {
+                schemaJson = sectionToUse + ":\n" + mapper.writeValueAsString(section);
+            } else {
+                // Fallback al esquema completo si no se encuentra la sección
+                schemaJson = new String(Files.readAllBytes(Paths.get("esquema.json")), StandardCharsets.UTF_8);
+            }
+        } catch (IOException e) {
+            // Fallback al esquema original si no existe el estructurado
+            schemaJson = new String(Files.readAllBytes(Paths.get("esquema.json")), StandardCharsets.UTF_8);
+        }
+        
+        String full = """
+				Eres un generador de SQL para una base de datos Oracle. Utilizando Oracle SQL.
+				
+				INSTRUCCIONES ESTRICTAS:
+			    1. Usa EXCLUSIVAMENTE los nombres de tablas y columnas que aparecen en el esquema JSON.
+			    2. Usa los nombres EXACTOS, respetando mayúsculas y minúsculas tal como están en el JSON.
+			    3. En TODOS los identificadores, usa el schema real del JSON como prefijo exacto: schema.tabla.columna (por ejemplo: SIGTH_ASIS.MI_TABLA.MI_COLUMNA).
+			    4. Para hacer JOIN, usa ÚNICAMENTE las relaciones que aparecen en `foreign_keys` y `exported_keys`.
+			    5. No inventes tablas ni columnas que no estén en el esquema.
+			    6. Devuelve SOLO el SQL, sin comentarios, sin explicaciones y sin texto adicional.
+			    7. No agregues comentarios ni explicaciones.
+			    8. No incluyas punto y coma al final.
+			    9. Si no es posible construir la consulta con la información disponible, devuelve exactamente: -- Consulta no posible
+			    10. Ignora los encabezados de sección (ASIS, ACAD, etc.); usa siempre el valor del campo "schema" del JSON como nombre de esquema en el SQL.
+			    
+			    ESQUEMA DE LA BASE DE DATOS (solo los relevantes según la consulta):
+				""" + schemaJson + "\n\nPREGUNTA:\n" + promptText + "\n\nSQL:\n";
+        return full;
+    }
 
-    			%s
-
-    			Devuelve sólo la consulta SQL sin explicaciones, incluyendo el esquema y la tabla, sin envolverla en texto adicional. Pregunta:
-    			%s
-
-    			
-    			""".formatted(schemaJson, promptText);
-    	System.out.println(full);
+    public String generateSQL(String promptText) throws IOException, ParseException {
+        String full = buildPrompt(promptText);
+        System.out.println(full);
         ObjectMapper m = new ObjectMapper();
         ObjectNode o = m.createObjectNode();
 		o.put("model", "codellama:latest");
         o.put("prompt", full);
         o.put("stream", false);
-        o.putArray("stop").add(";");
+        ObjectNode options = o.putObject("options");
+        options.put("temperature", 0.1);
+        options.put("num_ctx", 12288);
+        o.putArray("stop").add(";").add("```\n").add("\n\n");
         String body = m.writeValueAsString(o);
 
         HttpPost p = new HttpPost(apiUrl + "/api/generate");
@@ -58,25 +95,18 @@ public class OllamaClient {
         p.setEntity(new StringEntity(body, StandardCharsets.UTF_8));
         
         RequestConfig config = RequestConfig.custom()
-        	    .setConnectTimeout(6000, TimeUnit.SECONDS)  // conexión
+        	    .setConnectionRequestTimeout(6000, TimeUnit.SECONDS)  // conexión
         	    .setResponseTimeout(7200, TimeUnit.SECONDS) // lectura
         	    .build();
         
-        try (
-        	CloseableHttpClient c = HttpClients.custom().setDefaultRequestConfig(config).build();
-            ClassicHttpResponse r = (ClassicHttpResponse) c.execute(p)) {
-            String rb = EntityUtils.toString(r.getEntity());
-            System.out.println("Respuesta cruda de Ollama:\n" + rb);
-            JsonNode root = m.readTree(rb);
-            String sql = root.path("response").asText();
-            return sql.replaceAll("\\\\n", " ").replaceAll("\\s+", " ").trim();
-            /*int s = rb.indexOf("\"response\":\"");
-            if (s>=0) {
-                int f = s + 12;
-                int t = rb.indexOf('"', f);
-                return rb.substring(f, t).replaceAll("\\n", " ").trim();
+        try (CloseableHttpClient c = HttpClients.custom().setDefaultRequestConfig(config).build()) {
+            try (ClassicHttpResponse r = (ClassicHttpResponse) c.execute(p)) {
+                String rb = EntityUtils.toString(r.getEntity());
+                System.out.println("Respuesta cruda de Ollama:\n" + rb);
+                JsonNode root = m.readTree(rb);
+                String sql = root.path("response").asText();
+                return sql.replaceAll("\\\\n", " ").replaceAll("\\s+", " ").trim();
             }
-            throw new IOException("Invalid response from Ollama: "+rb);*/
         }
     }
 }

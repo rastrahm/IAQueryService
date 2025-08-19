@@ -33,21 +33,70 @@ canvas {
 </style>
 </head>
 <body>
-	<h2>Asistente de Consulta IA</h2>
-
+	<h1>Asistente de Consulta IA</h1>
+	<h2>Consulta en lenguaje natural</h2>
 	<label for="prompt">Ingresa tu pregunta:</label>
 	<br>
-	<textarea id="prompt"></textarea>
+	<textarea id="naturalPrompt" placeholder="Escribe aquí tu consulta en lenguaje natural..."></textarea><br>
 	<br>
+	<button onclick="generarSQL()">Enviar</button>
 	<br>
-	<button onclick="enviarConsulta()">Enviar</button>
-	<button onclick="leerBase()">Refrezcar</button>
-
+	<h2>SQL generado (editable)</h2>
+	<textarea id="sqlGenerado" placeholder="Aquí aparecerá el SQL para revisión..." readonly></textarea><br>
+	<button id="btnEjecutar" onclick="ejecutarSQL()" disabled>Ejecutar SQL</button>
+    <br>
+    <button onclick="leerBase()">Refrezcar</button>
+	<br>
 	<div id="sql"></div>
 	<div id="tabla"></div>
 	<canvas id="grafico"></canvas>
 
 	<script>
+	async function generarSQL() {
+	    const prompt = document.getElementById('naturalPrompt').value.trim();
+	    if (!prompt) {
+	        alert('Por favor, escribe tu consulta en lenguaje natural.');
+	        return;
+	    }
+
+	    const resp = await fetch('/query', {
+	        method: 'POST',
+	        headers: { 'Content-Type': 'text/plain; charset=UTF-8' },
+	        body: prompt
+	    });
+
+	    const data = await resp.json();
+
+	    if (data.sql) {
+	        document.getElementById('sqlGenerado').value = data.sql;
+	        document.getElementById('sqlGenerado').readOnly = false; // permitir edición
+	        document.getElementById('btnEjecutar').disabled = false;
+	    } else {
+	        document.getElementById('sqlGenerado').textContent = 'Error generando SQL';
+	    }
+	}
+	async function ejecutarSQL() {
+	    const sql = document.getElementById('sqlGenerado').value.trim();
+	    if (!sql) {
+	        alert('No hay SQL para ejecutar.');
+	        return;
+	    }
+
+	    const resp = await fetch('/executeSQL', {
+	        method: 'POST',
+	        headers: { 'Content-Type': 'text/plain; charset=UTF-8' },
+	        body: sql
+	    });
+
+	    const data = await resp.json();
+		if (data.sql) {
+		    document.getElementById('sqlGenerado').textContent = JSON.stringify(data, null, 2);
+		    document.getElementById("sql").innerHTML = datos.sql;
+	        mostrarTabla(datos.data);
+	        mostrarGrafico(datos.data);			
+		}
+	}
+	
     async function enviarConsulta() {
       const prompt = document.getElementById("prompt").value;
       const tablaDiv = document.getElementById("tabla");
@@ -78,7 +127,7 @@ canvas {
         tablaDiv.innerHTML = "Cargando...";
 
         try {
-          const response = await fetch("http://localhost:8080/refreshSchema", {
+          const response = await fetch("http://192.168.105.221:8100/refreshSchema", {
             method: "GET",
             headers: { "Content-Type": "text/plain" },
           });
